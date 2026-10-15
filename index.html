@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNA to Protein</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #070b10;
+    --fg: #e6edf3;
+    --muted: #7d8896;
+    --line: #1c2632;
+    --accent: #7cf5c4;
+    --err: #ff6b7a;
+    --warn: #ffd166;
+    --A: #6ee7a0;
+    --T: #ff7b8b;
+    --G: #ffd166;
+    --C: #6cb6ff;
+    --unread: #4a525c;
+    --mut: #ff5cf0;
+  }
+
+  [hidden] { display: none !important; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Courier New", Courier, monospace;
+  }
+
+  /* ---------- entry stage ---------- */
+  #entry-stage { position: fixed; inset: 0; }
+
+  #entry {
+    position: absolute;
+    left: 0; right: 0; top: 50%;
+    transform: translateY(-50%);
+    text-align: center;
+  }
+
+  /* zero-width box at the exact horizontal centre; the typed text hangs off
+     its left edge so new input pushes older input left and off the screen */
+  #line {
+    position: relative;
+    width: 0;
+    height: 1.3em;
+    margin: 0 auto;
+    font-size: clamp(28px, 5vw, 56px);
+    line-height: 1.3;
+  }
+  #typed {
+    position: absolute;
+    right: 0.5ch;
+    top: 0;
+    white-space: pre;
+  }
+  #typed .umut { color: var(--mut); }
+  #cursor {
+    position: absolute;
+    left: -0.5ch;
+    top: 0;
+    color: var(--accent);
+    animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+
+  .prompt {
+    margin: 0.9em 0 0;
+    font-size: clamp(14px, 1.7vw, 22px);
+    color: var(--muted);
+  }
+  .prompt + .prompt { margin-top: 0.4em; }
+  .nudge { animation: nudge 0.35s; }
+  @keyframes nudge {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-5px); color: var(--err); }
+    60% { transform: translateX(5px); color: var(--err); }
+  }
+
+  /* ---------- results stage ---------- */
+  #results-stage {
+    position: fixed; inset: 0;
+    display: grid;
+    /* six columns: the top row is thirds (span 2), the bottom row halves (span 3) */
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+    animation: fade 0.25s ease-out;
+  }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+  .quad {
+    display: flex;
+    flex-direction: column;
+    min-width: 0; min-height: 0;
+    padding: 14px 18px;
+    box-sizing: border-box;
+    border: 0 solid var(--line);
+  }
+  #q-dna, #q-tmpl, #q-rna { grid-column: span 2; border-bottom-width: 1px; }
+  #q-trna, #q-aa { grid-column: span 3; }
+  #q-dna, #q-tmpl, #q-trna { border-right-width: 1px; }
+  #q-trna, #q-aa { padding-bottom: 150px; } /* room for the footer */
+
+  .quad h2 {
+    margin: 0 0 8px;
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .box {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+  .seq {
+    line-height: 1.3;
+    word-break: break-all;
+    overflow-wrap: anywhere;
+  }
+  .none { color: var(--muted); }
+
+  .base.A { color: var(--A); }
+  .base.T, .base.U { color: var(--T); }
+  .base.G { color: var(--G); }
+  .base.C { color: var(--C); }
+  .base.unread { color: var(--unread); }
+  .base.unread.alt { background: none; }
+  .base.unread.start, .base.unread.stop { text-decoration: none; }
+  .base.lit { animation: pop 0.4s ease-out; }
+  .base.alt { background: rgba(255, 255, 255, 0.2); }
+  /* each codon is an unbreakable group with a gap after it, so triplets never split across lines */
+  .cod { display: inline-block; white-space: nowrap; margin-right: 0.5em; }
+  .base.start { text-decoration: underline solid var(--accent); text-decoration-thickness: 0.08em; }
+  .base.stop { text-decoration: underline solid var(--err); text-decoration-thickness: 0.08em; }
+  .base.mut { background: rgba(255, 92, 240, 0.3); box-shadow: inset 0 -0.14em 0 var(--mut); }
+  .base.hl { background: #fff; color: #000; text-decoration: none; }
+  /* a base deleted from the reference: zero-width marker between its neighbours */
+  .delmark {
+    display: inline-block;
+    width: 0; height: 1em;
+    margin: 0 0.04em;
+    border-left: 0.14em solid var(--mut);
+    vertical-align: text-bottom;
+  }
+
+  .rev:not(.on) { visibility: hidden; }
+  .base.rev.on { animation: pop 0.4s ease-out; }
+  @keyframes pop {
+    from { opacity: 0; text-shadow: 0 0 0.7em currentColor; }
+    to   { opacity: 1; text-shadow: none; }
+  }
+
+  .chain {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4em 0.45em;
+    line-height: 1.2;
+  }
+  .aa {
+    position: relative;
+    display: inline-block;
+    padding: 0.12em 0.42em;
+    border-radius: 0.35em;
+    background: hsl(var(--h) 75% 70%);
+    color: #0b0f14;
+    font-weight: 700;
+    outline: none;
+  }
+  .aa:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: 100%; top: 50%;
+    width: 0.45em;
+    height: max(1px, 0.1em);
+    background: var(--muted);
+    transform: translateY(-50%);
+  }
+  .aa.stop {
+    background: #2a1418;
+    color: #ff8f9b;
+    box-shadow: inset 0 0 0 0.08em var(--err);
+  }
+  .aa.changed { outline: 0.1em dashed var(--mut); outline-offset: 0.14em; }
+  .aa.on { animation: chip 0.35s ease-out; }
+  @keyframes chip { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }
+  .aa.active, .aa:focus-visible { box-shadow: 0 0 0 0.13em #fff; z-index: 1; }
+  .aa.stop.active, .aa.stop:focus-visible { box-shadow: inset 0 0 0 0.08em var(--err), 0 0 0 0.13em #fff; }
+
+  /* ---------- overlays ---------- */
+  #decoding {
+    position: fixed;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+    padding: 0.7em 1.2em;
+    font-size: 22px;
+    color: var(--accent);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+  }
+  #decoding .d { opacity: 0; }
+  #decoding .d.on { opacity: 1; }
+
+  #footer {
+    position: fixed;
+    left: 50%; bottom: 14px;
+    transform: translateX(-50%);
+    z-index: 4;
+    max-width: 92vw;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+  }
+  #messages { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+  .msg.error { color: var(--err); }
+  .msg.warn { color: var(--warn); }
+  .msg.ok { color: var(--A); }
+  .msg.mut { color: var(--mut); }
+  .msg.note { color: var(--muted); font-size: 12px; }
+
+  #reset {
+    font: inherit;
+    font-size: 14px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: transparent;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    padding: 0.6em 1.6em;
+    cursor: pointer;
+  }
+  #reset:hover, #reset:focus-visible { background: var(--accent); color: var(--bg); outline: none; }
+
+  #tip {
+    position: fixed;
+    z-index: 10;
+    max-width: 300px;
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    background: #111923;
+    border: 1px solid #2b3848;
+    border-radius: 6px;
+    pointer-events: none;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  }
+  #tip .t { font-weight: 700; margin-bottom: 2px; }
+  #tip .r { display: flex; gap: 10px; }
+  #tip .k { width: 5.5em; color: var(--muted); }
+  #tip .n { color: var(--muted); margin-top: 4px; }
+
+  #capture {
+    position: fixed; top: 0; left: 0;
+    width: 1px; height: 1px;
+    opacity: 0;
+    font-size: 16px;
+    border: 0; padding: 0;
+  }
+
+  /* ---------- pre-made structures (unlocked with &) ---------- */
+  #entry { transition: top 0.3s ease; }
+  #entry-stage.unlocked #entry { top: 27%; }
+
+  #p-status {
+    position: absolute;
+    left: 0; right: 0; top: 100%;
+    margin: 1.2em 0 0;
+    min-height: 1.4em;
+    font-size: clamp(13px, 1.4vw, 18px);
+    color: var(--accent);
+  }
+  #p-status.paused { color: var(--warn); }
+
+  #structures {
+    position: fixed;
+    left: 50%; top: 54%; bottom: 20px;
+    width: min(920px, 92vw);
+    transform: translateX(-50%);
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+  #structures .s-title {
+    margin: 0 0 10px;
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  #s-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 10px;
+  }
+  .s-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    font: inherit;
+    text-align: left;
+    color: var(--fg);
+    background: #0d141c;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+  }
+  .s-card:hover, .s-card.cursor { border-color: var(--accent); background: #101b24; }
+  .s-card .n { font-size: 14px; font-weight: 700; }
+  .s-card .g, .s-card .l { margin-top: 4px; font-size: 12px; color: var(--muted); }
+
+  #info {
+    position: fixed; inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(7, 11, 16, 0.6);
+  }
+  #info .card {
+    width: min(560px, 100%);
+    max-height: 90vh;
+    overflow: auto;
+    box-sizing: border-box;
+    padding: 20px 24px;
+    background: #0d141c;
+    border: 1px solid #2b3848;
+    border-radius: 10px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+  }
+  #info .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  #info h3 { margin: 6px 0 4px; font-size: 22px; }
+  #info p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--fg); }
+  #info dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 16px;
+    margin: 14px 0;
+    font-size: 13px;
+  }
+  #info dt { color: var(--muted); }
+  #info dd { margin: 0; }
+  #info .edit { color: var(--mut); margin-top: 10px; }
+  #info .note { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  #info .hint { margin-top: 16px; text-align: center; color: var(--accent); letter-spacing: 0.08em; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .base.rev.on, .base.lit, .aa.on, #results-stage { animation: none; }
+    .nudge { animation: none; }
+    #entry { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<main id="entry-stage">
+  <div id="entry">
+    <div id="line"><span id="typed"></span><span id="cursor">_</span></div>
+    <p class="prompt" id="p-enter">Enter A, T, G or C.</p>
+    <p class="prompt" id="p-done">Press enter when done.</p>
+    <p id="p-status" aria-live="polite"></p>
+  </div>
+
+  <div id="structures" hidden>
+    <p class="s-title">Pre-made structures &middot; click one, or arrow keys + enter &middot; &amp; to close</p>
+    <div id="s-grid"></div>
+  </div>
+</main>
+
+<div id="results-stage" hidden>
+  <section class="quad" id="q-dna">
+    <h2>Coding DNA &middot; 5'&rarr;3'</h2>
+    <div class="box" id="dna-box"><div class="seq" id="dna"></div></div>
+  </section>
+  <section class="quad" id="q-tmpl">
+    <h2>Template DNA &middot; 3'&rarr;5'</h2>
+    <div class="box" id="tmpl-box"><div class="seq" id="tmpl"></div></div>
+  </section>
+  <section class="quad" id="q-rna">
+    <h2>mRNA &middot; 5'&rarr;3'</h2>
+    <div class="box" id="rna-box"><div class="seq" id="rna"></div></div>
+  </section>
+  <section class="quad" id="q-trna">
+    <h2>tRNA anticodons &middot; 3'&rarr;5'</h2>
+    <div class="box" id="trna-box"><div class="seq" id="trna"></div></div>
+  </section>
+  <section class="quad" id="q-aa">
+    <h2>Protein &middot; amino acid chain</h2>
+    <div class="box" id="aa-box"><div class="chain" id="chain"></div></div>
+  </section>
+</div>
+
+<div id="decoding" hidden>decoding<span class="d">.</span><span class="d">.</span><span class="d">.</span></div>
+
+<div id="footer" hidden>
+  <div id="messages" aria-live="polite"></div>
+  <button id="reset" type="button">Reset</button>
+</div>
+
+<div id="tip" role="tooltip" hidden></div>
+
+<div id="info" role="dialog" aria-modal="true" aria-labelledby="info-title" hidden>
+  <div class="card">
+    <div class="eyebrow">Pre-made structure</div>
+    <h3 id="info-title"></h3>
+    <p id="info-desc"></p>
+    <dl id="info-meta"></dl>
+    <p class="edit" id="info-edit"></p>
+    <p class="note" id="info-note"></p>
+    <p class="hint">Press ENTER to close</p>
+  </div>
+</div>
+
+<!-- Pre-made structure sequences: a copy of structures.json (kept inline so the page works from file://). -->
+<script type="application/json" id="structure-data">{"description":"DNA sequences for well-known cellular structures, for use with the DNA-to-protein decoder (index.html).","strand":"Coding (sense) strand, 5'->3', written with T (not U). Paste a sequence into the decoder as-is.","source":"NCBI Nucleotide (RefSeq / GenBank), retrieved 2026-10-14","structures":[{"id":"glut1","name":"GLUT1 glucose transporter pore","structure":"Facilitated glucose transporter (the GLUT pore)","gene":"SLC2A1","organism":"Homo sapiens","accession":"NM_006516.4","kind":"protein-coding CDS","length_bp":1479,"protein_length_aa":492,"start_codon":"ATG","stop_codon":"TGA","sequence":"ATGGAGCCCAGCAGCAAGAAGCTGACGGGTCGCCTCATGCTGGCCGTGGGAGGAGCAGTGCTTGGCTCCCTGCAGTTTGGCTACAACACTGGAGTCATCAATGCCCCCCAGAAGGTGATCGAGGAGTTCTACAACCAGACATGGGTCCACCGCTATGGGGAGAGCATCCTGCCCACCACGCTCACCACGCTCTGGTCCCTCTCAGTGGCCATCTTTTCTGTTGGGGGCATGATTGGCTCCTTCTCTGTGGGCCTTTTCGTTAACCGCTTTGGCCGGCGGAATTCAATGCTGATGATGAACCTGCTGGCCTTCGTGTCCGCCGTGCTCATGGGCTTCTCGAAACTGGGCAAGTCCTTTGAGATGCTGATCCTGGGCCGCTTCATCATCGGTGTGTACTGCGGCCTGACCACAGGCTTCGTGCCCATGTATGTGGGTGAAGTGTCACCCACAGCCCTTCGTGGGGCCCTGGGCACCCTGCACCAGCTGGGCATCGTCGTCGGCATCCTCATCGCCCAGGTGTTCGGCCTGGACTCCATCATGGGCAACAAGGACCTGTGGCCCCTGCTGCTGAGCATCATCTTCATCCCGGCCCTGCTGCAGTGCATCGTGCTGCCCTTCTGCCCCGAGAGTCCCCGCTTCCTGCTCATCAACCGCAACGAGGAGAACCGGGCCAAGAGTGTGCTAAAGAAGCTGCGCGGGACAGCTGACGTGACCCATGACCTGCAGGAGATGAAGGAAGAGAGTCGGCAGATGATGCGGGAGAAGAAGGTCACCATCCTGGAGCTGTTCCGCTCCCCCGCCTACCGCCAGCCCATCCTCATCGCTGTGGTGCTGCAGCTGTCCCAGCAGCTGTCTGGCATCAACGCTGTCTTCTATTACTCCACGAGCATCTTCGAGAAGGCGGGGGTGCAGCAGCCTGTGTATGCCACCATTGGCTCCGGTATCGTCAACACGGCCTTCACTGTCGTGTCGCTGTTTGTGGTGGAGCGAGCAGGCCGGCGGACCCTGCACCTCATAGGCCTCGCTGGCATGGCGGGTTGTGCCATACTCATGACCATCGCGCTAGCACTGCTGGAGCAGCTACCCTGGATGTCCTATCTGAGCATCGTGGCCATCTTTGGCTTTGTGGCCTTCTTTGAAGTGGGTCCTGGCCCCATCCCATGGTTCATCGTGGCTGAACTCTTCAGCCAGGGTCCACGTCCAGCTGCCATTGCCGTTGCAGGCTTCTCCAACTGGACCTCAAATTTCATTGTGGGCATGTGCTTCCAGTATGTGGAGCAACTGTGTGGTCCCTACGTCTTCATCATCTTCACTGTGCTCCTGGTTCTGTTCTTCATCTTCACCTACTTCAAAGTTCCTGAGACTAAAGGCCGGACCTTCGATGAGATCGCTTCCGGCTTCCGGCAGGGGGGAGCCAGCCAAAGTGACAAGACACCCGAGGAGCTGTTCCATCCCCTGGGGGCTGATTCCCAAGTGTGA"},{"id":"ribosome-small-subunit","name":"Ribosome, lower half (small subunit 18S rRNA)","structure":"Core RNA of the 40S small ribosomal subunit, the lower half of the ribosome in the usual orientation","gene":"RNA18SN5","organism":"Homo sapiens","accession":"NR_003286.4","kind":"rRNA gene (non-coding)","length_bp":1869,"protein_length_aa":null,"note":"Ribosomal RNA genes are transcribed but never translated. In this decoder the sequence will be read as if it were protein-coding, so the output is not a real protein.","sequence":"TACCTGGTTGATCCTGCCAGTAGCATATGCTTGTCTCAAAGATTAAGCCATGCATGTCTGAGTACGCACGGCCGGTACAGTGAAACTGCGAATGGCTCATTAAATCAGTTATGGTTCCTTTGGTCGCTCGCTCCTCTCCTACTTGGATAACTGTGGTAATTCTAGAGCTAATACATGCCGACGGGCGCTGACCCCCTTCGCGGGGGGGATGCGTGCATTTATCAGATCAAAACCAACCCGGTCAGCCCCTCTCCGGCCCCGGCCGGGGGGCGGGCGCCGGCGGCTTTGGTGACTCTAGATAACCTCGGGCCGATCGCACGCCCCCCGTGGCGGCGACGACCCATTCGAACGTCTGCCCTATCAACTTTCGATGGTAGTCGCCGTGCCTACCATGGTGACCACGGGTGACGGGGAATCAGGGTTCGATTCCGGAGAGGGAGCCTGAGAAACGGCTACCACATCCAAGGAAGGCAGCAGGCGCGCAAATTACCCACTCCCGACCCGGGGAGGTAGTGACGAAAAATAACAATACAGGACTCTTTCGAGGCCCTGTAATTGGAATGAGTCCACTTTAAATCCTTTAACGAGGATCCATTGGAGGGCAAGTCTGGTGCCAGCAGCCGCGGTAATTCCAGCTCCAATAGCGTATATTAAAGTTGCTGCAGTTAAAAAGCTCGTAGTTGGATCTTGGGAGCGGGCGGGCGGTCCGCCGCGAGGCGAGCCACCGCCCGTCCCCGCCCCTTGCCTCTCGGCGCCCCCTCGATGCTCTTAGCTGAGTGTCCCGCGGGGCCCGAAGCGTTTACTTTGAAAAAATTAGAGTGTTCAAAGCAGGCCCGAGCCGCCTGGATACCGCAGCTAGGAATAATGGAATAGGACCGCGGTTCTATTTTGTTGGTTTTCGGAACTGAGGCCATGATTAAGAGGGACGGCCGGGGGCATTCGTATTGCGCCGCTAGAGGTGAAATTCTTGGACCGGCGCAAGACGGACCAGAGCGAAAGCATTTGCCAAGAATGTTTTCATTAATCAAGAACGAAAGTCGGAGGTTCGAAGACGATCAGATACCGTCGTAGTTCCGACCATAAACGATGCCGACCGGCGATGCGGCGGCGTTATTCCCATGACCCGCCGGGCAGCTTCCGGGAAACCAAAGTCTTTGGGTTCCGGGGGGAGTATGGTTGCAAAGCTGAAACTTAAAGGAATTGACGGAAGGGCACCACCAGGAGTGGAGCCTGCGGCTTAATTTGACTCAACACGGGAAACCTCACCCGGCCCGGACACGGACAGGATTGACAGATTGATAGCTCTTTCTCGATTCCGTGGGTGGTGGTGCATGGCCGTTCTTAGTTGGTGGAGCGATTTGTCTGGTTAATTCCGATAACGAACGAGACTCTGGCATGCTAACTAGTTACGCGACCCCCGAGCGGTCGGCGTCCCCCAACTTCTTAGAGGGACAAGTGGCGTTCAGCCACCCGAGATTGAGCAATAACAGGTCTGTGATGCCCTTAGATGTCCGGGGCTGCACGCGCGCTACACTGACTGGCTCAGCGTGTGCCTACCCTACGCCGGCAGGCGCGGGTAACCCGTTGAACCCCATTCGTGATGGGGATCGGGGATTGCAATTATTCCCCATGAACGAGGAATTCCCAGTAAGTGCGGGTCATAAGCTTGCGTTGATTAAGTCCCTGCCCTTTGTACACACCGCCCGTCGCTACTACCGATTGGATGGTTTAGTGAGGCCCTCGGATCGGCCCCGCCGGGGTCGGCCCACGGCCCTGGCGGAGCGCTGAGAAGACGGTCGAACTTGACTATCTAGAGGAAGTAAAAGTCGTAACAAGGTTTCCGTAGGTGAACCTGCGGAAGGATCATTA"},{"id":"hemoglobin-beta","name":"Hemoglobin beta chain","structure":"Oxygen-carrying subunit of hemoglobin","gene":"HBB","organism":"Homo sapiens","accession":"NM_000518.5","kind":"protein-coding CDS","length_bp":444,"protein_length_aa":147,"start_codon":"ATG","stop_codon":"TAA","sequence":"ATGGTGCATCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTGGATGAAGTTGGTGGTGAGGCCCTGGGCAGGCTGCTGGTGGTCTACCCTTGGACCCAGAGGTTCTTTGAGTCCTTTGGGGATCTGTCCACTCCTGATGCTGTTATGGGCAACCCTAAGGTGAAGGCTCATGGCAAGAAAGTGCTCGGTGCCTTTAGTGATGGCCTGGCTCACCTGGACAACCTCAAGGGCACCTTTGCCACACTGAGTGAGCTGCACTGTGACAAGCTGCACGTGGATCCTGAGAACTTCAGGCTCCTGGGCAACGTGCTGGTCTGTGTGCTGGCCCATCACTTTGGCAAAGAATTCACCCCACCAGTGCAGGCTGCCTATCAGAAAGTGGTGGCTGGTGTGGCTAATGCCCTGGCCCACAAGTATCACTAA"},{"id":"insulin","name":"Insulin (preproinsulin)","structure":"Peptide hormone that signals cells to take up glucose","gene":"INS","organism":"Homo sapiens","accession":"NM_000207.3","kind":"protein-coding CDS","length_bp":333,"protein_length_aa":110,"start_codon":"ATG","stop_codon":"TAG","sequence":"ATGGCCCTGTGGATGCGCCTCCTGCCCCTGCTGGCGCTGCTGGCCCTCTGGGGACCTGACCCAGCCGCAGCCTTTGTGAACCAACACCTGTGCGGCTCACACCTGGTGGAAGCTCTCTACCTAGTGTGCGGGGAACGAGGCTTCTTCTACACACCCAAGACCCGCCGGGAGGCAGAGGACCTGCAGGTGGGGCAGGTGGAGCTGGGCGGGGGCCCTGGTGCAGGCAGCCTGCAGCCCTTGGCCCTGGAGGGGTCCCTGCAGAAGCGTGGCATTGTGGAACAATGCTGTACCAGCATCTGCTCCCTCTACCAGCTGGAGAACTACTGCAACTAG"},{"id":"gfp","name":"Green fluorescent protein","structure":"Barrel-shaped fluorescent protein used as a cell biology tag","gene":"GFP","organism":"Aequorea victoria","accession":"M62653.1","kind":"protein-coding CDS","length_bp":717,"protein_length_aa":238,"start_codon":"ATG","stop_codon":"TAA","sequence":"ATGAGTAAAGGAGAAGAACTTTTCACTGGAGTTGTCCCAATTCTTGTTGAATTAGATGGTGATGTTAATGGGCACAAATTTTCTGTCAGTGGAGAGGGTGAAGGTGATGCAACATACGGAAAACTTACCCTTAAATTTATTTGCACTACTGGAAAACTACCTGTTCCATGGCCAACACTTGTCACTACTTTCTCTTATGGTGTTCAATGCTTTTCAAGATACCCAGATCATATGAAACAGCATGACTTTTTCAAGAGTGCCATGCCCGAAGGTTATGTACAGGAAAGAACTATATTTTTCAAAGATGACGGGAACTACAAGACACGTGCTGAAGTCAAGTTTGAAGGTGATACCCTTGTTAATAGAATCGAGTTAAAAGGTATTGATTTTAAAGAAGATGGAAACATTCTTGGACACAAATTGGAATACAACTATAACTCACACAATGTATACATCATGGCAGACAAACAAAAGAATGGAATCAAAGTTAACTTCAAAATTAGACACAACATTGAAGATGGAAGCGTTCAACTAGCAGACCATTATCAACAAAATACTCCAATTGGCGATGGCCCTGTCCTTTTACCAGACAACCATTACCTGTCCACACAATCTGCCCTTTCGAAAGATCCCAACGAAAAGAGAGACCACATGGTCCTTCTTGAGTTTGTAACAGCTGCTGGGATTACACATGGCATGGATGAACTATACAAATAA"}]}</script>
+
+<input id="capture" type="text" autocomplete="off" autocapitalize="characters"
+       autocorrect="off" spellcheck="false" aria-label="DNA sequence input">
+
+<script>
+(() => {
+'use strict';
+
+// ==== decode logic ====
+const BASE_ORDER = 'TCAG';
+// Standard genetic code, indexed by (first base, second base, third base) in T-C-A-G order.
+const CODON_AA = 'FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG';
+const AMINO = {
+  F: ['Phe', 'Phenylalanine'], L: ['Leu', 'Leucine'],       S: ['Ser', 'Serine'],
+  Y: ['Tyr', 'Tyrosine'],      C: ['Cys', 'Cysteine'],      W: ['Trp', 'Tryptophan'],
+  P: ['Pro', 'Proline'],       H: ['His', 'Histidine'],     Q: ['Gln', 'Glutamine'],
+  R: ['Arg', 'Arginine'],      I: ['Ile', 'Isoleucine'],    M: ['Met', 'Methionine'],
+  T: ['Thr', 'Threonine'],     N: ['Asn', 'Asparagine'],    K: ['Lys', 'Lysine'],
+  V: ['Val', 'Valine'],        A: ['Ala', 'Alanine'],       D: ['Asp', 'Aspartic acid'],
+  E: ['Glu', 'Glutamic acid'], G: ['Gly', 'Glycine'],       '*': ['Stop', 'Stop codon']
+};
+// The input is the CODING strand. Its partner, the template strand, is the
+// base-pair complement. RNA polymerase reads the template, so the mRNA is the
+// complement of the template (= the coding strand with U for T), and each tRNA
+// anticodon is the complement of the mRNA codon (= the template with U for T).
+const TEMPLATE_OF = { A: 'T', T: 'A', G: 'C', C: 'G' };
+const MRNA_OF     = { A: 'U', T: 'A', G: 'C', C: 'G' };   // from a template base
+const ANTICODON   = { A: 'U', U: 'A', G: 'C', C: 'G' };   // from an mRNA base
+
+function decode(seq) {
+  const n = seq.length;
+  const start = seq.indexOf('ATG');
+  const out = { seq, start, end: 0, codons: [], terminated: false, canBegin: start >= 0, messages: [] };
+
+  if (!out.canBegin) {
+    out.messages.push({ kind: 'error', text: 'DNA decoding cannot begin.' });
+    return out;
+  }
+
+  let i = start;
+  while (i + 3 <= n) {
+    const dna = seq.slice(i, i + 3);
+    const template = Array.from(dna, b => TEMPLATE_OF[b]).join('');
+    const rna = Array.from(template, b => MRNA_OF[b]).join('');
+    // CODON_AA is indexed in T-C-A-G order, which is the coding-strand spelling of the codon.
+    const idx = BASE_ORDER.indexOf(dna[0]) * 16 + BASE_ORDER.indexOf(dna[1]) * 4 + BASE_ORDER.indexOf(dna[2]);
+    const one = CODON_AA[idx];
+    const [abbr, name] = AMINO[one];
+    out.codons.push({
+      pos: i,
+      dna,
+      template,
+      rna,
+      anticodon: Array.from(rna, b => ANTICODON[b]).join(''),
+      abbr, name,
+      stop: one === '*'
+    });
+    i += 3;
+    if (one === '*') { out.terminated = true; break; }
+  }
+  out.end = i;
+
+  if (!out.terminated) out.messages.push({ kind: 'warn', text: 'Failed to terminate' });
+  // Measured from the start codon: bases ahead of it are skipped, not misparsed.
+  if ((n - start) % 3 !== 0) out.messages.push({ kind: 'warn', text: 'Non-parseable input, showing as much as possible.' });
+  if (out.terminated && out.end < n) out.messages.push({ kind: 'warn', text: 'Input not fully decoded, early termination detected.' });
+  return out;
+}
+
+// ---- comparing an edited sequence with its reference ----
+// Minimal edit script (substitutions, insertions, deletions) turning `a` (reference)
+// into `b` (what was typed); works on strings or arrays. `op.b` is the position in `b`
+// (a deletion sits before b[op.b]) and `op.a` the position in `a`.
+// Each op carries a cluster id: ops with no matching base between them share one.
+function diffSeq(a, b) {
+  let p = 0;
+  while (p < a.length && p < b.length && a[p] === b[p]) p++;
+  let s = 0;
+  while (s < a.length - p && s < b.length - p && a[a.length - 1 - s] === b[b.length - 1 - s]) s++;
+  const A = a.slice(p, a.length - s), B = b.slice(p, b.length - s);
+  const n = A.length, m = B.length;
+  if (n * m > 6e6) return null;
+
+  const W = m + 1;
+  const D = new Uint16Array((n + 1) * W);
+  for (let i = 0; i <= n; i++) D[i * W] = i;
+  for (let j = 0; j <= m; j++) D[j] = j;
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      const sub = D[(i - 1) * W + j - 1] + (A[i - 1] === B[j - 1] ? 0 : 1);
+      const del = D[(i - 1) * W + j] + 1;
+      const ins = D[i * W + j - 1] + 1;
+      D[i * W + j] = Math.min(sub, del, ins);
+    }
+  }
+
+  const ops = [];
+  let i = n, j = m, cluster = 0;
+  while (i > 0 || j > 0) {
+    const here = D[i * W + j];
+    if (i > 0 && j > 0 && here === D[(i - 1) * W + j - 1] + (A[i - 1] === B[j - 1] ? 0 : 1)) {
+      if (A[i - 1] !== B[j - 1]) ops.push({ t: 'sub', a: p + i - 1, b: p + j - 1, c: cluster });
+      else cluster++;
+      i--; j--;
+    } else if (i > 0 && here === D[(i - 1) * W + j] + 1) {
+      ops.push({ t: 'del', a: p + i - 1, b: p + j, c: cluster });
+      i--;
+    } else {
+      ops.push({ t: 'ins', a: p + i, b: p + j - 1, c: cluster });
+      j--;
+    }
+  }
+  return ops.reverse();
+}
+
+const plural = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
+
+// Decode `seq` and compare it with the reference sequence `ref`.
+// Returns the edit ops, which typed bases are edits, which residues changed, and a verdict.
+function analyze(ref, seq, kind) {
+  const refRes = decode(ref), mutRes = decode(seq);
+  const refChain = refRes.codons.map(c => c.abbr);
+  const mutChain = mutRes.codons.map(c => c.abbr);
+  const identical = ref === seq;
+  const ops = identical ? [] : diffSeq(ref, seq);
+
+  const out = { ops: ops || [], refChain, mutated: new Set(), delBefore: new Set(), changedRes: null, verdict: null };
+  for (const op of out.ops) (op.t === 'del' ? out.delBefore : out.mutated).add(op.b);
+  // changedRes: chain index -> the reference residue it replaced (null if inserted)
+  out.changedRes = new Map();
+  const chainOps = refChain.join() === mutChain.join() ? [] : (diffSeq(refChain, mutChain) || []);
+  for (const op of chainOps) {
+    if (op.t === 'sub') out.changedRes.set(op.b, refChain[op.a]);
+    else if (op.t === 'ins') out.changedRes.set(op.b, null);
+  }
+
+  const count = t => out.ops.filter(o => o.t === t).length;
+  const subs = count('sub'), ins = count('ins'), dels = count('del');
+  const summary = ops === null ? 'extensive edits' :
+    [subs && plural(subs, 'substitution'), ins && plural(ins, 'insertion'), dels && plural(dels, 'deletion')]
+      .filter(Boolean).join(', ');
+  out.summary = summary;
+  out.counts = { subs, ins, dels };
+
+  // Reading frame: net bases added/removed after each cluster of edits, left to right.
+  const clusterNet = new Map();
+  for (const op of out.ops) {
+    clusterNet.set(op.c, (clusterNet.get(op.c) || 0) + (op.t === 'ins' ? 1 : op.t === 'del' ? -1 : 0));
+  }
+  let cum = 0, frameshift = false;
+  for (const net of clusterNet.values()) {
+    cum += net;
+    if (((cum % 3) + 3) % 3 !== 0) frameshift = true;
+  }
+  const net = ins - dels;
+
+  // Where the mutated start codon sits in the reference.
+  const refPosOf = bPos => {
+    let delta = 0;
+    for (const op of out.ops) {
+      if (op.t === 'ins' && op.b < bPos) delta++;
+      else if (op.t === 'del' && op.b <= bPos) delta--;
+    }
+    return bPos - delta;
+  };
+
+  let d = 0;
+  while (d < refChain.length && d < mutChain.length && refChain[d] === mutChain[d]) d++;
+  const sameChain = d === refChain.length && d === mutChain.length;
+  const residues = refChain.filter(a => a !== 'Stop').length;
+  const mutResidues = mutChain.filter(a => a !== 'Stop').length;
+
+  // Past a frameshift (or a lost start) nothing lines up: flag every residue from k on.
+  const markFrom = k => {
+    out.changedRes = new Map();
+    for (let i = k; i < mutChain.length; i++) out.changedRes.set(i, refChain[i] === undefined ? null : refChain[i]);
+  };
+
+  let v;
+  if (identical) {
+    v = { tone: 'ok', changed: false, text: 'Sequence matches the reference. Structure unchanged.' };
+  } else if (/^rRNA/.test(kind || '')) {
+    v = { tone: 'mut', changed: true,
+          text: 'rRNA gene altered (' + summary + '). Ribosomal RNA is never translated, so the change affects the RNA itself, not a protein; the chain below is for illustration only.' };
+  } else if (seq.length < ref.length && ref.startsWith(seq)) {
+    v = { tone: 'mut', changed: true,
+          text: 'Sequence is incomplete: ' + seq.length + ' of ' + ref.length + ' bases entered, so the protein is cut short. Structure changed.' };
+  } else if (!mutRes.canBegin) {
+    v = { tone: 'mut', changed: true,
+          text: 'Start codon destroyed (' + summary + '): no ATG remains, so translation cannot begin and no protein is made. Structure changed.' };
+  } else if (refPosOf(mutRes.start) !== refRes.start) {
+    markFrom(0);
+    v = { tone: 'mut', changed: true,
+          text: 'Start codon lost (' + summary + '): translation begins at a different ATG, so the protein is different. Structure changed.' };
+  } else if (sameChain) {
+    v = { tone: 'ok', changed: false,
+          text: 'Mutation present (' + summary + '), but the amino acid chain is identical (silent). Structure unchanged.' };
+  } else if (frameshift) {
+    markFrom(d);
+    const tail = mutRes.terminated ? 'translation ends at a stop after ' + plural(mutResidues, 'residue')
+                                   : 'no stop codon is reached';
+    v = { tone: 'mut', changed: true,
+          text: 'Frameshift (' + summary + '): the reading frame shifts from residue ' + (d + 1) +
+                ', so everything after it differs and ' + tail + '. Structure changed.' };
+  } else if (mutChain[d] === 'Stop' && refChain[d] !== 'Stop') {
+    out.changedRes.set(d, refChain[d]);   // the premature stop itself
+    v = { tone: 'mut', changed: true,
+          text: 'Nonsense mutation (' + summary + '): a premature stop codon at residue ' + (d + 1) +
+                ' truncates the protein to ' + d + ' of ' + residues + ' residues. Structure changed.' };
+  } else if (net !== 0) {
+    v = { tone: 'mut', changed: true,
+          text: 'In-frame ' + (net > 0 ? 'insertion' : 'deletion') + ' (' + summary + '): the protein ' + (net > 0 ? 'gains ' : 'loses ') +
+                plural(Math.abs(net) / 3, 'residue') + ' near residue ' + (d + 1) + '. Structure changed.' };
+  } else {
+    const list = [...out.changedRes.keys()].slice(0, 3)
+      .map(k => (out.changedRes.get(k) || '—') + (k + 1) + ' → ' + mutChain[k]).join(', ');
+    const more = out.changedRes.size > 3 ? ' and ' + (out.changedRes.size - 3) + ' more' : '';
+    v = { tone: 'mut', changed: true,
+          text: 'Missense (' + summary + '): ' + list + more + '. The amino acid chain has changed, so the structure changed.' };
+  }
+  out.verdict = v;
+  return out;
+}
+// ==== end decode logic ====
+
+// One hue per amino acid; chemically similar residues sit next to each other on the wheel.
+const AA_ORDER = ['Gly','Ala','Val','Leu','Ile','Met','Pro','Phe','Trp','Tyr',
+                  'Ser','Thr','Cys','Asn','Gln','His','Lys','Arg','Asp','Glu'];
+const hueFor = abbr => 8 + AA_ORDER.indexOf(abbr) * 18;
+
+const $ = id => document.getElementById(id);
+const mk = (tag, cls, text) => {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+};
+
+const entryStage = $('entry-stage'), resultsStage = $('results-stage');
+const typedEl = $('typed'), pEnter = $('p-enter'), pDone = $('p-done'), capture = $('capture');
+const decodingEl = $('decoding'), footer = $('footer'), messagesEl = $('messages');
+const resetBtn = $('reset'), tip = $('tip');
+const quads = [
+  { box: $('dna-box'),  el: $('dna')   },
+  { box: $('tmpl-box'), el: $('tmpl')  },
+  { box: $('rna-box'),  el: $('rna')   },
+  { box: $('trna-box'), el: $('trna')  },
+  { box: $('aa-box'),   el: $('chain') }
+];
+const [dnaQ, tmplQ, rnaQ, trnaQ, aaQ] = quads;
+
+let mode = 'input';          // 'input' | 'busy' | 'done'
+let seq = '';
+let runId = 0;               // bumped on reset so stale animations stop
+let res = null;
+let dnaSpans = [], tmplSpans = [], rnaSpans = [], trnaSpans = [], chips = [];
+let hlSpans = [];
+
+// pre-made structures
+const STRUCTURES = JSON.parse($('structure-data').textContent).structures;
+const structuresEl = $('structures'), sGrid = $('s-grid'), pStatus = $('p-status');
+const infoEl = $('info');
+let structure = null;        // reference being typed / decoded (null for hand-typed input)
+let origin = [];             // per typed base: 1 = typed by the user over a structure, 0 = otherwise
+let auto = null;             // { ref, i, delay, timer, paused, done } while a structure is typing itself
+let cmp = null;              // comparison of the submitted sequence with `structure`
+let gridOpen = false, gridIdx = -1;
+let infoOpen = false;
+
+// ---------- input stage ----------
+function renderTyped(slide) {
+  const tail = seq.slice(-300);            // far more than ever fits on screen
+  const marks = origin.slice(-300);
+  if (!marks.includes(1)) {
+    typedEl.textContent = tail;
+  } else {
+    // bases the user typed over a pre-made structure are drawn in the mutation colour
+    typedEl.replaceChildren();
+    let run = '', runMark = marks[0];
+    const flush = () => {
+      if (!run) return;
+      const s = mk('span', runMark ? 'umut' : '', run);
+      typedEl.append(s);
+      run = '';
+    };
+    for (let i = 0; i < tail.length; i++) {
+      if (marks[i] !== runMark) { flush(); runMark = marks[i]; }
+      run += tail[i];
+    }
+    flush();
+  }
+  if (slide && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    typedEl.style.transition = 'none';
+    typedEl.style.transform = 'translateX(1ch)';
+    void typedEl.offsetWidth;
+    typedEl.style.transition = 'transform 0.12s ease-out';
+    typedEl.style.transform = 'translateX(0)';
+  }
+}
+
+function nudge(el) {
+  el.classList.remove('nudge');
+  void el.offsetWidth;
+  el.classList.add('nudge');
+}
+
+// ---- pre-made structures: the & grid and the self-typing sequence ----
+const autoRunning = () => !!auto && !auto.done && !auto.paused;
+
+function updateStatus() {
+  pStatus.classList.toggle('paused', !!auto && auto.paused && !auto.done);
+  if (!structure || !auto) { pStatus.textContent = ''; return; }
+  if (auto.done) {
+    pStatus.textContent = structure.name + ' typed (' + seq.length + ' bases). Edit it if you like, then press enter.';
+  } else if (auto.paused) {
+    pStatus.textContent = 'Paused. Type a mutation (A, T, G, C, or backspace), then space to resume.';
+  } else {
+    pStatus.textContent = 'Typing ' + structure.name + '… space to pause.';
+  }
+}
+
+function stopAuto() {
+  if (auto) clearInterval(auto.timer);
+  auto = null;
+}
+
+function autoStep() {
+  if (!auto || auto.paused || auto.done) return;
+  seq += auto.ref[auto.i++];
+  origin.push(0);
+  renderTyped(auto.delay >= 40);
+  if (auto.i >= auto.ref.length) {
+    clearInterval(auto.timer);
+    auto.done = true;
+    updateStatus();
+  }
+}
+
+function startAuto(s) {
+  stopAuto();
+  structure = s;
+  seq = '';
+  origin = [];
+  closeGrid();
+  // roughly 15 s for the longest sequences, never slower than a brisk typist
+  const delay = Math.min(60, Math.max(8, Math.round(15000 / s.sequence.length)));
+  auto = { ref: s.sequence, i: 0, delay, paused: false, done: false, timer: 0 };
+  auto.timer = setInterval(autoStep, delay);
+  renderTyped(false);
+  updateStatus();
+}
+
+function toggleAutoPause() {
+  if (!auto || auto.done) return;
+  auto.paused = !auto.paused;
+  updateStatus();
+}
+
+const cards = STRUCTURES.map((s, i) => {
+  const b = mk('button', 's-card');
+  b.type = 'button';
+  b.tabIndex = -1;
+  b.append(mk('div', 'n', s.name),
+           mk('div', 'g', s.gene + ' · ' + s.organism),
+           mk('div', 'l', s.length_bp.toLocaleString() + ' bases'));
+  b.addEventListener('click', () => { if (mode === 'input') startAuto(STRUCTURES[i]); });
+  sGrid.append(b);
+  return b;
+});
+
+function paintCards() {
+  cards.forEach((c, i) => c.classList.toggle('cursor', i === gridIdx));
+}
+function openGrid() {
+  gridOpen = true;
+  gridIdx = -1;
+  structuresEl.hidden = false;
+  entryStage.classList.add('unlocked');
+  paintCards();
+}
+function closeGrid() {
+  gridOpen = false;
+  structuresEl.hidden = true;
+  entryStage.classList.remove('unlocked');
+}
+const toggleGrid = () => (gridOpen ? closeGrid() : openGrid());
+
+// Arrow keys move over the cards, enter picks the highlighted one. Returns true if handled.
+function gridKey(e) {
+  const cols = Math.max(1, getComputedStyle(sGrid).gridTemplateColumns.split(' ').length);
+  const move = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols }[e.key];
+  if (move !== undefined) {
+    e.preventDefault();
+    gridIdx = gridIdx < 0 ? 0 : Math.min(cards.length - 1, Math.max(0, gridIdx + move));
+    paintCards();
+    cards[gridIdx].scrollIntoView({ block: 'nearest' });
+    return true;
+  }
+  if (e.key === 'Enter' && gridIdx >= 0) {
+    e.preventDefault();
+    startAuto(STRUCTURES[gridIdx]);
+    return true;
+  }
+  return false;
+}
+
+capture.addEventListener('input', () => {
+  const raw = capture.value;
+  capture.value = '';
+  if (mode !== 'input') return;
+  if (raw.includes('&')) { toggleGrid(); return; }  // keyboards that don't report key on keydown
+  if (autoRunning()) { nudge(pStatus); return; }    // typing is paused first, then edited
+  let added = false, rejected = false;
+  for (const ch of raw.toUpperCase()) {
+    if ('ATGC'.includes(ch)) {
+      seq += ch;
+      origin.push(structure ? 1 : 0);
+      added = true;
+    } else if (!/\s/.test(ch)) rejected = true;
+  }
+  if (added) renderTyped(true);
+  if (rejected) nudge(pEnter);
+});
+
+capture.addEventListener('keydown', e => {
+  if (mode !== 'input') return;
+  if (e.key === '&') { e.preventDefault(); toggleGrid(); return; }
+  if (e.key === ' ') { e.preventDefault(); toggleAutoPause(); return; }
+  if (gridOpen && gridKey(e)) return;
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    submit();
+  } else if (e.key === 'Backspace') {
+    e.preventDefault();
+    if (autoRunning()) { nudge(pStatus); return; }
+    if (seq) { seq = seq.slice(0, -1); origin.pop(); renderTyped(false); }
+  }
+});
+
+// The info overlay swallows enter (and escape) before anything else sees it.
+document.addEventListener('keydown', e => {
+  if (!infoOpen) return;
+  if (e.key === 'Enter' || e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation();
+    // a held-down enter (the one that submitted) must not close it straight away
+    if (!e.repeat) closeInfo();
+  }
+}, true);
+infoEl.addEventListener('click', () => closeInfo());
+
+const focusCapture = () => { if (mode === 'input') capture.focus({ preventScroll: true }); };
+capture.addEventListener('blur', () => setTimeout(focusCapture, 0));
+document.addEventListener('pointerdown', () => setTimeout(focusCapture, 0));
+window.addEventListener('focus', focusCapture);
+
+function submit() {
+  if (!seq) { nudge(pDone); return; }
+  mode = 'busy';
+  if (auto) clearInterval(auto.timer);   // enter mid-typing decodes what has been typed so far
+  closeGrid();
+  run(seq);
+}
+
+// ---------- structure info overlay ----------
+function openInfo(s, c) {
+  $('info-title').textContent = s.name;
+  $('info-desc').textContent = s.structure + '.';
+  const rows = [
+    ['Gene', s.gene],
+    ['Organism', s.organism],
+    ['Accession', s.accession + ' (NCBI)'],
+    ['Type', s.kind],
+    ['Length', s.length_bp.toLocaleString() + ' bases'],
+    ['Protein', s.protein_length_aa ? s.protein_length_aa + ' amino acids' : 'none (not translated)']
+  ];
+  $('info-meta').replaceChildren(...rows.flatMap(([k, v]) => [mk('dt', '', k), mk('dd', '', v)]));
+  const edited = c && c.ops.length;
+  $('info-edit').textContent = edited
+    ? 'Your sequence differs from the reference: ' + c.summary + '.'
+    : (c ? 'Your sequence matches the reference exactly.' : '');
+  $('info-note').textContent = s.note || '';
+  infoEl.hidden = false;
+  infoOpen = true;
+}
+
+function closeInfo() {
+  if (!infoOpen) return;
+  infoOpen = false;
+  infoEl.hidden = true;
+  if (mode === 'done') resetBtn.focus();
+}
+
+// ---------- font fitting ----------
+const MIN_PT = 2, MAX_PT = 24;
+function fit({ box, el }) {
+  const fits = pt => {
+    el.style.fontSize = pt + 'pt';
+    return box.scrollHeight <= box.clientHeight && box.scrollWidth <= box.clientWidth;
+  };
+  // Measure without a scrollbar: an overflowing box's scrollbar narrows the text
+  // area, which would keep it overflowing at a size that really fits.
+  box.style.overflow = 'hidden';
+  const done = () => { box.style.overflow = ''; };
+  if (fits(MAX_PT)) return done();
+  if (!fits(MIN_PT)) return done(); // stays at the minimum; the box scrolls
+  let lo = MIN_PT, hi = MAX_PT;
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    if (fits(mid)) lo = mid; else hi = mid;
+  }
+  el.style.fontSize = lo + 'pt';
+  done();
+}
+const fitAll = () => quads.forEach(fit);
+
+let resizeQueued = false;
+window.addEventListener('resize', () => {
+  if (resultsStage.hidden || resizeQueued) return;
+  resizeQueued = true;
+  requestAnimationFrame(() => { resizeQueued = false; fitAll(); });
+});
+
+// ---------- results ----------
+function baseSpan(ch, extra) {
+  return mk('span', 'base ' + ch + (extra ? ' ' + extra : ''), ch);
+}
+
+function buildResults(r) {
+  res = r;
+  quads.forEach(q => q.el.replaceChildren());
+  dnaSpans = []; tmplSpans = []; rnaSpans = []; trnaSpans = []; chips = [];
+
+  // Edits relative to a pre-made structure: typed bases that are new or changed, and
+  // the points where a reference base is missing.
+  const mutated = cmp ? cmp.mutated : new Set();
+  const delBefore = cmp ? cmp.delBefore : new Set();
+  const delMark = () => mk('span', 'delmark');
+
+  for (let j = 0; j <= r.seq.length; j++) {
+    if (delBefore.has(j)) { dnaQ.el.appendChild(delMark()); tmplQ.el.appendChild(delMark()); }
+    if (j === r.seq.length) break;
+    // Both DNA strands start gray; codons are lit as they are decoded.
+    const edited = mutated.has(j) ? ' mut' : '';
+    const ds = baseSpan(r.seq[j], 'unread' + edited);
+    const ts = baseSpan(TEMPLATE_OF[r.seq[j]], 'unread' + edited);
+    dnaSpans.push(ds); tmplSpans.push(ts);
+    dnaQ.el.appendChild(ds); tmplQ.el.appendChild(ts);
+  }
+
+  if (!r.canBegin) {
+    for (const q of [rnaQ, trnaQ, aaQ]) q.el.appendChild(mk('span', 'none', '—'));
+    return;
+  }
+
+  r.codons.forEach((c, k) => {
+    for (let m = 0; m < 3; m++) {
+      const edited = mutated.has(c.pos + m) ? ' mut' : '';
+      const rs = baseSpan(c.rna[m], 'rev' + edited);
+      const ts = baseSpan(c.anticodon[m], 'rev' + edited);
+      rnaSpans.push(rs); trnaSpans.push(ts);
+      rnaQ.el.appendChild(rs); trnaQ.el.appendChild(ts);
+
+      const ds = dnaSpans[c.pos + m], tm = tmplSpans[c.pos + m];
+      for (const s of [ds, tm, rs, ts]) if (k % 2) s.classList.add('alt');
+      for (const s of [ds, tm, rs]) {
+        if (k === 0) s.classList.add('start');
+        if (c.stop) s.classList.add('stop');
+      }
+    }
+    // group the codon's bases (and any deletion marker between them) in each row
+    for (const [first, last] of [[dnaSpans[c.pos], dnaSpans[c.pos + 2]], [tmplSpans[c.pos], tmplSpans[c.pos + 2]],
+                                 [rnaSpans[k * 3], rnaSpans[k * 3 + 2]], [trnaSpans[k * 3], trnaSpans[k * 3 + 2]]]) {
+      const g = mk('span', 'cod');
+      first.parentNode.insertBefore(g, first);
+      for (let n = first; n; ) { const nx = n.nextSibling; g.appendChild(n); if (n === last) break; n = nx; }
+    }
+    const changed = cmp && cmp.changedRes.has(k);
+    const chip = mk('span', 'aa rev' + (c.stop ? ' stop' : '') + (changed ? ' changed' : ''), c.abbr);
+    chip.style.setProperty('--h', hueFor(c.abbr));
+    chip.dataset.k = k;
+    chip.tabIndex = 0;
+    chip.setAttribute('aria-label', c.name + ', codon ' + c.dna +
+      (changed ? ', changed from ' + (cmp.changedRes.get(k) || 'nothing') : ''));
+    chips.push(chip);
+    aaQ.el.appendChild(chip);
+  });
+}
+
+// Light up codon k in every panel at once.
+function revealCodon(k) {
+  const c = res.codons[k];
+  for (let m = 0; m < 3; m++) {
+    for (const d of [dnaSpans[c.pos + m], tmplSpans[c.pos + m]]) {
+      d.classList.remove('unread');
+      d.classList.add('lit');
+    }
+    rnaSpans[k * 3 + m].classList.add('on');
+    trnaSpans[k * 3 + m].classList.add('on');
+  }
+  chips[k].classList.add('on');
+}
+
+// The whole decode takes DECODE_MS: codon k gets a DECODE_MS / n slot and the
+// "decoding..." dots appear one by one over the same span.
+const DECODE_MS = 2000;
+function playDecoding(token) {
+  const dots = decodingEl.querySelectorAll('.d');
+  const n = res.codons.length;
+  const slot = DECODE_MS / n;
+  dots.forEach(d => d.classList.remove('on'));
+  decodingEl.hidden = false;
+
+  return new Promise(resolve => {
+    const t0 = performance.now();
+    let shown = 0, dotsShown = 0;
+    const tick = () => {
+      if (token !== runId) { clearInterval(timer); return resolve(); }
+      const elapsed = performance.now() - t0;
+      const codonTarget = Math.min(n, Math.floor(elapsed / slot) + 1);
+      while (shown < codonTarget) revealCodon(shown++);
+      const dotTarget = Math.min(dots.length, Math.floor(elapsed / (DECODE_MS / (dots.length + 1))));
+      while (dotsShown < dotTarget) dots[dotsShown++].classList.add('on');
+      if (elapsed >= DECODE_MS) {
+        clearInterval(timer);
+        decodingEl.hidden = true;
+        resolve();
+      }
+    };
+    const timer = setInterval(tick, 16);
+    tick();
+  });
+}
+
+function showFooter(messages) {
+  messagesEl.replaceChildren(...messages.map(m => mk('div', 'msg ' + m.kind, m.text)));
+  footer.hidden = false;
+}
+
+async function run(input) {
+  const token = ++runId;
+  const r = decode(input);
+  cmp = structure ? analyze(structure.sequence, input, structure.kind) : null;
+
+  // verdict on the structure first, then the decoder's own warnings
+  const messages = [];
+  if (cmp) {
+    messages.push({ kind: cmp.verdict.tone, text: cmp.verdict.text });
+    if (cmp.ops.length) {
+      messages.push({ kind: 'note', text: 'Magenta marks your edited bases (a bar marks a deleted one); dashed amino acids differ from the reference.' });
+    }
+  }
+  messages.push(...r.messages);
+
+  entryStage.hidden = true;
+  resultsStage.hidden = false;
+  buildResults(r);
+  fitAll();
+  if (structure) openInfo(structure, cmp);
+
+  if (!r.canBegin) {
+    showFooter(messages);
+    mode = 'done';
+    if (!infoOpen) resetBtn.focus();
+    return;
+  }
+
+  await playDecoding(token);
+  if (token !== runId) return;
+
+  showFooter(messages);
+  mode = 'done';
+  if (!infoOpen) resetBtn.focus();
+}
+
+// ---------- hover: amino acid -> tRNA -> mRNA -> DNA ----------
+function clearHighlight() {
+  hlSpans.forEach(s => s.classList.remove('hl'));
+  hlSpans = [];
+  chips.forEach(c => c.classList.remove('active'));
+  tip.hidden = true;
+}
+
+function tipRow(label, text, cls) {
+  const row = mk('div', 'r');
+  row.append(mk('span', 'k', label));
+  const v = mk('span', 'v');
+  for (const ch of text) v.append(mk('span', 'base ' + ch, ch));
+  row.append(v);
+  if (cls) row.append(mk('span', 'n', cls));
+  return row;
+}
+
+function showTip(chip, k) {
+  const c = res.codons[k];
+  tip.replaceChildren();
+  const title = mk('div', 't', c.abbr + ' · ' + c.name);
+  if (!c.stop) title.style.color = 'hsl(' + hueFor(c.abbr) + ' 75% 70%)';
+  else title.style.color = 'var(--err)';
+  tip.append(title);
+  tip.append(mk('div', 'n', 'codon ' + (k + 1) + ' of ' + res.codons.length));
+  tip.append(tipRow('Coding', c.dna, 'input bases ' + (c.pos + 1) + '–' + (c.pos + 3)));
+  tip.append(tipRow('Template', c.template));
+  tip.append(tipRow('mRNA', c.rna));
+  tip.append(tipRow('tRNA', c.anticodon, "anticodon 3'→5'"));
+  if (c.stop) tip.append(mk('div', 'n', 'No amino acid is added: a release factor ends translation here.'));
+  if (cmp && cmp.changedRes.has(k)) {
+    tip.append(mk('div', 'n', 'Reference residue: ' + (cmp.changedRes.get(k) || 'none (inserted)') + ' — changed'));
+  }
+
+  tip.hidden = false;
+  const r = chip.getBoundingClientRect(), t = tip.getBoundingClientRect();
+  let top = r.top - t.height - 8;
+  if (top < 8) top = r.bottom + 8;
+  const left = Math.min(Math.max(8, r.left + r.width / 2 - t.width / 2), innerWidth - t.width - 8);
+  tip.style.top = top + 'px';
+  tip.style.left = left + 'px';
+}
+
+function activate(chip) {
+  clearHighlight();
+  const k = +chip.dataset.k, c = res.codons[k];
+  const sets = [[dnaSpans, c.pos, dnaQ.box], [tmplSpans, c.pos, tmplQ.box],
+                [rnaSpans, k * 3, rnaQ.box], [trnaSpans, k * 3, trnaQ.box]];
+  for (const [arr, off, box] of sets) {
+    for (let m = 0; m < 3; m++) {
+      const s = arr[off + m];
+      s.classList.add('hl');
+      hlSpans.push(s);
+    }
+    if (box.scrollHeight > box.clientHeight + 1) arr[off].scrollIntoView({ block: 'nearest' });
+  }
+  chip.classList.add('active');
+  showTip(chip, k);
+}
+
+const chipOf = e => {
+  const chip = e.target.closest && e.target.closest('.aa');
+  return chip && chip.classList.contains('on') ? chip : null;
+};
+const chain = aaQ.el;
+chain.addEventListener('mouseover', e => { const c = chipOf(e); if (c) activate(c); });
+chain.addEventListener('mouseout', e => {
+  const c = chipOf(e);
+  if (c && !c.contains(e.relatedTarget)) clearHighlight();
+});
+chain.addEventListener('focusin', e => { const c = chipOf(e); if (c) activate(c); });
+chain.addEventListener('focusout', clearHighlight);
+
+// ---------- reset ----------
+resetBtn.addEventListener('click', () => {
+  runId++;
+  seq = '';
+  origin = [];
+  res = null;
+  cmp = null;
+  structure = null;
+  stopAuto();
+  closeGrid();
+  infoOpen = false;
+  infoEl.hidden = true;
+  updateStatus();
+  clearHighlight();
+  decodingEl.hidden = true;
+  footer.hidden = true;
+  resultsStage.hidden = true;
+  entryStage.hidden = false;
+  mode = 'input';
+  renderTyped(false);
+  capture.focus({ preventScroll: true });
+});
+
+renderTyped(false);
+capture.focus({ preventScroll: true });
+})();
+</script>
+</body>
+</html>
