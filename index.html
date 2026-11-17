@@ -152,6 +152,10 @@
     vertical-align: text-bottom;
   }
 
+  #results-stage.instant .base.lit, #results-stage.instant .base.rev.on, #results-stage.instant .aa.on { animation: none; }
+  .diff-flash { background: #fff !important; color: #000 !important; }
+  .aa.diff-flash { box-shadow: 0 0 0 0.25em #fff; }
+
   .rev:not(.on) { visibility: hidden; }
   .base.rev.on { animation: pop 0.4s ease-out; }
   @keyframes pop {
@@ -231,7 +235,8 @@
   .msg.mut { color: var(--mut); }
   .msg.note { color: var(--muted); font-size: 12px; }
 
-  #reset {
+  #actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+  #reset, #swap {
     font: inherit;
     font-size: 14px;
     letter-spacing: 0.15em;
@@ -243,7 +248,7 @@
     padding: 0.6em 1.6em;
     cursor: pointer;
   }
-  #reset:hover, #reset:focus-visible { background: var(--accent); color: var(--bg); outline: none; }
+  #reset:hover, #reset:focus-visible, #swap:hover, #swap:focus-visible { background: var(--accent); color: var(--bg); outline: none; }
 
   #tip {
     position: fixed;
@@ -415,7 +420,10 @@
 
 <div id="footer" hidden>
   <div id="messages" aria-live="polite"></div>
-  <button id="reset" type="button">Reset</button>
+  <div id="actions">
+    <button id="swap" type="button" hidden></button>
+    <button id="reset" type="button">Reset</button>
+  </div>
 </div>
 
 <div id="tip" role="tooltip" hidden></div>
@@ -433,7 +441,7 @@
 </div>
 
 <!-- Pre-made structure sequences: a copy of structures.json (kept inline so the page works from file://). -->
-<script type="application/json" id="structure-data">{"description":"DNA sequences for well-known cellular structures, for use with the DNA-to-protein decoder (index.html).","strand":"Coding (sense) strand, 5'->3', written with T (not U). Paste a sequence into the decoder as-is.","source":"NCBI Nucleotide (RefSeq / GenBank), retrieved 2026-10-14","structures":[{"id":"glut1","name":"GLUT1 glucose transporter pore","structure":"Facilitated glucose transporter (the GLUT pore)","gene":"SLC2A1","organism":"Homo sapiens","accession":"NM_006516.4","kind":"protein-coding CDS","length_bp":1479,"protein_length_aa":492,"start_codon":"ATG","stop_codon":"TGA","sequence":"ATGGAGCCCAGCAGCAAGAAGCTGACGGGTCGCCTCATGCTGGCCGTGGGAGGAGCAGTGCTTGGCTCCCTGCAGTTTGGCTACAACACTGGAGTCATCAATGCCCCCCAGAAGGTGATCGAGGAGTTCTACAACCAGACATGGGTCCACCGCTATGGGGAGAGCATCCTGCCCACCACGCTCACCACGCTCTGGTCCCTCTCAGTGGCCATCTTTTCTGTTGGGGGCATGATTGGCTCCTTCTCTGTGGGCCTTTTCGTTAACCGCTTTGGCCGGCGGAATTCAATGCTGATGATGAACCTGCTGGCCTTCGTGTCCGCCGTGCTCATGGGCTTCTCGAAACTGGGCAAGTCCTTTGAGATGCTGATCCTGGGCCGCTTCATCATCGGTGTGTACTGCGGCCTGACCACAGGCTTCGTGCCCATGTATGTGGGTGAAGTGTCACCCACAGCCCTTCGTGGGGCCCTGGGCACCCTGCACCAGCTGGGCATCGTCGTCGGCATCCTCATCGCCCAGGTGTTCGGCCTGGACTCCATCATGGGCAACAAGGACCTGTGGCCCCTGCTGCTGAGCATCATCTTCATCCCGGCCCTGCTGCAGTGCATCGTGCTGCCCTTCTGCCCCGAGAGTCCCCGCTTCCTGCTCATCAACCGCAACGAGGAGAACCGGGCCAAGAGTGTGCTAAAGAAGCTGCGCGGGACAGCTGACGTGACCCATGACCTGCAGGAGATGAAGGAAGAGAGTCGGCAGATGATGCGGGAGAAGAAGGTCACCATCCTGGAGCTGTTCCGCTCCCCCGCCTACCGCCAGCCCATCCTCATCGCTGTGGTGCTGCAGCTGTCCCAGCAGCTGTCTGGCATCAACGCTGTCTTCTATTACTCCACGAGCATCTTCGAGAAGGCGGGGGTGCAGCAGCCTGTGTATGCCACCATTGGCTCCGGTATCGTCAACACGGCCTTCACTGTCGTGTCGCTGTTTGTGGTGGAGCGAGCAGGCCGGCGGACCCTGCACCTCATAGGCCTCGCTGGCATGGCGGGTTGTGCCATACTCATGACCATCGCGCTAGCACTGCTGGAGCAGCTACCCTGGATGTCCTATCTGAGCATCGTGGCCATCTTTGGCTTTGTGGCCTTCTTTGAAGTGGGTCCTGGCCCCATCCCATGGTTCATCGTGGCTGAACTCTTCAGCCAGGGTCCACGTCCAGCTGCCATTGCCGTTGCAGGCTTCTCCAACTGGACCTCAAATTTCATTGTGGGCATGTGCTTCCAGTATGTGGAGCAACTGTGTGGTCCCTACGTCTTCATCATCTTCACTGTGCTCCTGGTTCTGTTCTTCATCTTCACCTACTTCAAAGTTCCTGAGACTAAAGGCCGGACCTTCGATGAGATCGCTTCCGGCTTCCGGCAGGGGGGAGCCAGCCAAAGTGACAAGACACCCGAGGAGCTGTTCCATCCCCTGGGGGCTGATTCCCAAGTGTGA"},{"id":"ribosome-small-subunit","name":"Ribosome, lower half (small subunit 18S rRNA)","structure":"Core RNA of the 40S small ribosomal subunit, the lower half of the ribosome in the usual orientation","gene":"RNA18SN5","organism":"Homo sapiens","accession":"NR_003286.4","kind":"rRNA gene (non-coding)","length_bp":1869,"protein_length_aa":null,"note":"Ribosomal RNA genes are transcribed but never translated. In this decoder the sequence will be read as if it were protein-coding, so the output is not a real protein.","sequence":"TACCTGGTTGATCCTGCCAGTAGCATATGCTTGTCTCAAAGATTAAGCCATGCATGTCTGAGTACGCACGGCCGGTACAGTGAAACTGCGAATGGCTCATTAAATCAGTTATGGTTCCTTTGGTCGCTCGCTCCTCTCCTACTTGGATAACTGTGGTAATTCTAGAGCTAATACATGCCGACGGGCGCTGACCCCCTTCGCGGGGGGGATGCGTGCATTTATCAGATCAAAACCAACCCGGTCAGCCCCTCTCCGGCCCCGGCCGGGGGGCGGGCGCCGGCGGCTTTGGTGACTCTAGATAACCTCGGGCCGATCGCACGCCCCCCGTGGCGGCGACGACCCATTCGAACGTCTGCCCTATCAACTTTCGATGGTAGTCGCCGTGCCTACCATGGTGACCACGGGTGACGGGGAATCAGGGTTCGATTCCGGAGAGGGAGCCTGAGAAACGGCTACCACATCCAAGGAAGGCAGCAGGCGCGCAAATTACCCACTCCCGACCCGGGGAGGTAGTGACGAAAAATAACAATACAGGACTCTTTCGAGGCCCTGTAATTGGAATGAGTCCACTTTAAATCCTTTAACGAGGATCCATTGGAGGGCAAGTCTGGTGCCAGCAGCCGCGGTAATTCCAGCTCCAATAGCGTATATTAAAGTTGCTGCAGTTAAAAAGCTCGTAGTTGGATCTTGGGAGCGGGCGGGCGGTCCGCCGCGAGGCGAGCCACCGCCCGTCCCCGCCCCTTGCCTCTCGGCGCCCCCTCGATGCTCTTAGCTGAGTGTCCCGCGGGGCCCGAAGCGTTTACTTTGAAAAAATTAGAGTGTTCAAAGCAGGCCCGAGCCGCCTGGATACCGCAGCTAGGAATAATGGAATAGGACCGCGGTTCTATTTTGTTGGTTTTCGGAACTGAGGCCATGATTAAGAGGGACGGCCGGGGGCATTCGTATTGCGCCGCTAGAGGTGAAATTCTTGGACCGGCGCAAGACGGACCAGAGCGAAAGCATTTGCCAAGAATGTTTTCATTAATCAAGAACGAAAGTCGGAGGTTCGAAGACGATCAGATACCGTCGTAGTTCCGACCATAAACGATGCCGACCGGCGATGCGGCGGCGTTATTCCCATGACCCGCCGGGCAGCTTCCGGGAAACCAAAGTCTTTGGGTTCCGGGGGGAGTATGGTTGCAAAGCTGAAACTTAAAGGAATTGACGGAAGGGCACCACCAGGAGTGGAGCCTGCGGCTTAATTTGACTCAACACGGGAAACCTCACCCGGCCCGGACACGGACAGGATTGACAGATTGATAGCTCTTTCTCGATTCCGTGGGTGGTGGTGCATGGCCGTTCTTAGTTGGTGGAGCGATTTGTCTGGTTAATTCCGATAACGAACGAGACTCTGGCATGCTAACTAGTTACGCGACCCCCGAGCGGTCGGCGTCCCCCAACTTCTTAGAGGGACAAGTGGCGTTCAGCCACCCGAGATTGAGCAATAACAGGTCTGTGATGCCCTTAGATGTCCGGGGCTGCACGCGCGCTACACTGACTGGCTCAGCGTGTGCCTACCCTACGCCGGCAGGCGCGGGTAACCCGTTGAACCCCATTCGTGATGGGGATCGGGGATTGCAATTATTCCCCATGAACGAGGAATTCCCAGTAAGTGCGGGTCATAAGCTTGCGTTGATTAAGTCCCTGCCCTTTGTACACACCGCCCGTCGCTACTACCGATTGGATGGTTTAGTGAGGCCCTCGGATCGGCCCCGCCGGGGTCGGCCCACGGCCCTGGCGGAGCGCTGAGAAGACGGTCGAACTTGACTATCTAGAGGAAGTAAAAGTCGTAACAAGGTTTCCGTAGGTGAACCTGCGGAAGGATCATTA"},{"id":"hemoglobin-beta","name":"Hemoglobin beta chain","structure":"Oxygen-carrying subunit of hemoglobin","gene":"HBB","organism":"Homo sapiens","accession":"NM_000518.5","kind":"protein-coding CDS","length_bp":444,"protein_length_aa":147,"start_codon":"ATG","stop_codon":"TAA","sequence":"ATGGTGCATCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTGGATGAAGTTGGTGGTGAGGCCCTGGGCAGGCTGCTGGTGGTCTACCCTTGGACCCAGAGGTTCTTTGAGTCCTTTGGGGATCTGTCCACTCCTGATGCTGTTATGGGCAACCCTAAGGTGAAGGCTCATGGCAAGAAAGTGCTCGGTGCCTTTAGTGATGGCCTGGCTCACCTGGACAACCTCAAGGGCACCTTTGCCACACTGAGTGAGCTGCACTGTGACAAGCTGCACGTGGATCCTGAGAACTTCAGGCTCCTGGGCAACGTGCTGGTCTGTGTGCTGGCCCATCACTTTGGCAAAGAATTCACCCCACCAGTGCAGGCTGCCTATCAGAAAGTGGTGGCTGGTGTGGCTAATGCCCTGGCCCACAAGTATCACTAA"},{"id":"insulin","name":"Insulin (preproinsulin)","structure":"Peptide hormone that signals cells to take up glucose","gene":"INS","organism":"Homo sapiens","accession":"NM_000207.3","kind":"protein-coding CDS","length_bp":333,"protein_length_aa":110,"start_codon":"ATG","stop_codon":"TAG","sequence":"ATGGCCCTGTGGATGCGCCTCCTGCCCCTGCTGGCGCTGCTGGCCCTCTGGGGACCTGACCCAGCCGCAGCCTTTGTGAACCAACACCTGTGCGGCTCACACCTGGTGGAAGCTCTCTACCTAGTGTGCGGGGAACGAGGCTTCTTCTACACACCCAAGACCCGCCGGGAGGCAGAGGACCTGCAGGTGGGGCAGGTGGAGCTGGGCGGGGGCCCTGGTGCAGGCAGCCTGCAGCCCTTGGCCCTGGAGGGGTCCCTGCAGAAGCGTGGCATTGTGGAACAATGCTGTACCAGCATCTGCTCCCTCTACCAGCTGGAGAACTACTGCAACTAG"},{"id":"gfp","name":"Green fluorescent protein","structure":"Barrel-shaped fluorescent protein used as a cell biology tag","gene":"GFP","organism":"Aequorea victoria","accession":"M62653.1","kind":"protein-coding CDS","length_bp":717,"protein_length_aa":238,"start_codon":"ATG","stop_codon":"TAA","sequence":"ATGAGTAAAGGAGAAGAACTTTTCACTGGAGTTGTCCCAATTCTTGTTGAATTAGATGGTGATGTTAATGGGCACAAATTTTCTGTCAGTGGAGAGGGTGAAGGTGATGCAACATACGGAAAACTTACCCTTAAATTTATTTGCACTACTGGAAAACTACCTGTTCCATGGCCAACACTTGTCACTACTTTCTCTTATGGTGTTCAATGCTTTTCAAGATACCCAGATCATATGAAACAGCATGACTTTTTCAAGAGTGCCATGCCCGAAGGTTATGTACAGGAAAGAACTATATTTTTCAAAGATGACGGGAACTACAAGACACGTGCTGAAGTCAAGTTTGAAGGTGATACCCTTGTTAATAGAATCGAGTTAAAAGGTATTGATTTTAAAGAAGATGGAAACATTCTTGGACACAAATTGGAATACAACTATAACTCACACAATGTATACATCATGGCAGACAAACAAAAGAATGGAATCAAAGTTAACTTCAAAATTAGACACAACATTGAAGATGGAAGCGTTCAACTAGCAGACCATTATCAACAAAATACTCCAATTGGCGATGGCCCTGTCCTTTTACCAGACAACCATTACCTGTCCACACAATCTGCCCTTTCGAAAGATCCCAACGAAAAGAGAGACCACATGGTCCTTCTTGAGTTTGTAACAGCTGCTGGGATTACACATGGCATGGATGAACTATACAAATAA"}]}</script>
+<script type="application/json" id="structure-data">{"description":"DNA sequences for well-known cellular structures, for use with the DNA-to-protein decoder (index.html).","strand":"Coding (sense) strand, 5'->3', written with T (not U). Paste a sequence into the decoder as-is.","source":"NCBI Nucleotide (RefSeq / GenBank), retrieved 2026-10-14","structures":[{"id":"glut1","name":"GLUT1 glucose transporter pore","structure":"Facilitated glucose transporter (the GLUT pore)","gene":"SLC2A1","organism":"Homo sapiens","accession":"NM_006516.4","kind":"protein-coding CDS","length_bp":1479,"protein_length_aa":492,"start_codon":"ATG","stop_codon":"TGA","sequence":"ATGGAGCCCAGCAGCAAGAAGCTGACGGGTCGCCTCATGCTGGCCGTGGGAGGAGCAGTGCTTGGCTCCCTGCAGTTTGGCTACAACACTGGAGTCATCAATGCCCCCCAGAAGGTGATCGAGGAGTTCTACAACCAGACATGGGTCCACCGCTATGGGGAGAGCATCCTGCCCACCACGCTCACCACGCTCTGGTCCCTCTCAGTGGCCATCTTTTCTGTTGGGGGCATGATTGGCTCCTTCTCTGTGGGCCTTTTCGTTAACCGCTTTGGCCGGCGGAATTCAATGCTGATGATGAACCTGCTGGCCTTCGTGTCCGCCGTGCTCATGGGCTTCTCGAAACTGGGCAAGTCCTTTGAGATGCTGATCCTGGGCCGCTTCATCATCGGTGTGTACTGCGGCCTGACCACAGGCTTCGTGCCCATGTATGTGGGTGAAGTGTCACCCACAGCCCTTCGTGGGGCCCTGGGCACCCTGCACCAGCTGGGCATCGTCGTCGGCATCCTCATCGCCCAGGTGTTCGGCCTGGACTCCATCATGGGCAACAAGGACCTGTGGCCCCTGCTGCTGAGCATCATCTTCATCCCGGCCCTGCTGCAGTGCATCGTGCTGCCCTTCTGCCCCGAGAGTCCCCGCTTCCTGCTCATCAACCGCAACGAGGAGAACCGGGCCAAGAGTGTGCTAAAGAAGCTGCGCGGGACAGCTGACGTGACCCATGACCTGCAGGAGATGAAGGAAGAGAGTCGGCAGATGATGCGGGAGAAGAAGGTCACCATCCTGGAGCTGTTCCGCTCCCCCGCCTACCGCCAGCCCATCCTCATCGCTGTGGTGCTGCAGCTGTCCCAGCAGCTGTCTGGCATCAACGCTGTCTTCTATTACTCCACGAGCATCTTCGAGAAGGCGGGGGTGCAGCAGCCTGTGTATGCCACCATTGGCTCCGGTATCGTCAACACGGCCTTCACTGTCGTGTCGCTGTTTGTGGTGGAGCGAGCAGGCCGGCGGACCCTGCACCTCATAGGCCTCGCTGGCATGGCGGGTTGTGCCATACTCATGACCATCGCGCTAGCACTGCTGGAGCAGCTACCCTGGATGTCCTATCTGAGCATCGTGGCCATCTTTGGCTTTGTGGCCTTCTTTGAAGTGGGTCCTGGCCCCATCCCATGGTTCATCGTGGCTGAACTCTTCAGCCAGGGTCCACGTCCAGCTGCCATTGCCGTTGCAGGCTTCTCCAACTGGACCTCAAATTTCATTGTGGGCATGTGCTTCCAGTATGTGGAGCAACTGTGTGGTCCCTACGTCTTCATCATCTTCACTGTGCTCCTGGTTCTGTTCTTCATCTTCACCTACTTCAAAGTTCCTGAGACTAAAGGCCGGACCTTCGATGAGATCGCTTCCGGCTTCCGGCAGGGGGGAGCCAGCCAAAGTGACAAGACACCCGAGGAGCTGTTCCATCCCCTGGGGGCTGATTCCCAAGTGTGA"},{"id":"ribosome-small-subunit","name":"Ribosome, lower half (small subunit 18S rRNA)","structure":"Core RNA of the 40S small ribosomal subunit, the lower half of the ribosome in the usual orientation","gene":"RNA18SN5","organism":"Homo sapiens","accession":"NR_003286.4","kind":"rRNA gene (non-coding)","length_bp":1869,"protein_length_aa":null,"note":"Ribosomal RNA genes are transcribed but never translated. In this decoder the sequence will be read as if it were protein-coding, so the output is not a real protein.","sequence":"TACCTGGTTGATCCTGCCAGTAGCATATGCTTGTCTCAAAGATTAAGCCATGCATGTCTGAGTACGCACGGCCGGTACAGTGAAACTGCGAATGGCTCATTAAATCAGTTATGGTTCCTTTGGTCGCTCGCTCCTCTCCTACTTGGATAACTGTGGTAATTCTAGAGCTAATACATGCCGACGGGCGCTGACCCCCTTCGCGGGGGGGATGCGTGCATTTATCAGATCAAAACCAACCCGGTCAGCCCCTCTCCGGCCCCGGCCGGGGGGCGGGCGCCGGCGGCTTTGGTGACTCTAGATAACCTCGGGCCGATCGCACGCCCCCCGTGGCGGCGACGACCCATTCGAACGTCTGCCCTATCAACTTTCGATGGTAGTCGCCGTGCCTACCATGGTGACCACGGGTGACGGGGAATCAGGGTTCGATTCCGGAGAGGGAGCCTGAGAAACGGCTACCACATCCAAGGAAGGCAGCAGGCGCGCAAATTACCCACTCCCGACCCGGGGAGGTAGTGACGAAAAATAACAATACAGGACTCTTTCGAGGCCCTGTAATTGGAATGAGTCCACTTTAAATCCTTTAACGAGGATCCATTGGAGGGCAAGTCTGGTGCCAGCAGCCGCGGTAATTCCAGCTCCAATAGCGTATATTAAAGTTGCTGCAGTTAAAAAGCTCGTAGTTGGATCTTGGGAGCGGGCGGGCGGTCCGCCGCGAGGCGAGCCACCGCCCGTCCCCGCCCCTTGCCTCTCGGCGCCCCCTCGATGCTCTTAGCTGAGTGTCCCGCGGGGCCCGAAGCGTTTACTTTGAAAAAATTAGAGTGTTCAAAGCAGGCCCGAGCCGCCTGGATACCGCAGCTAGGAATAATGGAATAGGACCGCGGTTCTATTTTGTTGGTTTTCGGAACTGAGGCCATGATTAAGAGGGACGGCCGGGGGCATTCGTATTGCGCCGCTAGAGGTGAAATTCTTGGACCGGCGCAAGACGGACCAGAGCGAAAGCATTTGCCAAGAATGTTTTCATTAATCAAGAACGAAAGTCGGAGGTTCGAAGACGATCAGATACCGTCGTAGTTCCGACCATAAACGATGCCGACCGGCGATGCGGCGGCGTTATTCCCATGACCCGCCGGGCAGCTTCCGGGAAACCAAAGTCTTTGGGTTCCGGGGGGAGTATGGTTGCAAAGCTGAAACTTAAAGGAATTGACGGAAGGGCACCACCAGGAGTGGAGCCTGCGGCTTAATTTGACTCAACACGGGAAACCTCACCCGGCCCGGACACGGACAGGATTGACAGATTGATAGCTCTTTCTCGATTCCGTGGGTGGTGGTGCATGGCCGTTCTTAGTTGGTGGAGCGATTTGTCTGGTTAATTCCGATAACGAACGAGACTCTGGCATGCTAACTAGTTACGCGACCCCCGAGCGGTCGGCGTCCCCCAACTTCTTAGAGGGACAAGTGGCGTTCAGCCACCCGAGATTGAGCAATAACAGGTCTGTGATGCCCTTAGATGTCCGGGGCTGCACGCGCGCTACACTGACTGGCTCAGCGTGTGCCTACCCTACGCCGGCAGGCGCGGGTAACCCGTTGAACCCCATTCGTGATGGGGATCGGGGATTGCAATTATTCCCCATGAACGAGGAATTCCCAGTAAGTGCGGGTCATAAGCTTGCGTTGATTAAGTCCCTGCCCTTTGTACACACCGCCCGTCGCTACTACCGATTGGATGGTTTAGTGAGGCCCTCGGATCGGCCCCGCCGGGGTCGGCCCACGGCCCTGGCGGAGCGCTGAGAAGACGGTCGAACTTGACTATCTAGAGGAAGTAAAAGTCGTAACAAGGTTTCCGTAGGTGAACCTGCGGAAGGATCATTA"},{"id":"hemoglobin-beta","name":"Hemoglobin beta chain","structure":"Oxygen-carrying subunit of hemoglobin","gene":"HBB","organism":"Homo sapiens","accession":"NM_000518.5","kind":"protein-coding CDS","length_bp":444,"protein_length_aa":147,"start_codon":"ATG","stop_codon":"TAA","sequence":"ATGGTGCATCTGACTCCTGAGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTGGATGAAGTTGGTGGTGAGGCCCTGGGCAGGCTGCTGGTGGTCTACCCTTGGACCCAGAGGTTCTTTGAGTCCTTTGGGGATCTGTCCACTCCTGATGCTGTTATGGGCAACCCTAAGGTGAAGGCTCATGGCAAGAAAGTGCTCGGTGCCTTTAGTGATGGCCTGGCTCACCTGGACAACCTCAAGGGCACCTTTGCCACACTGAGTGAGCTGCACTGTGACAAGCTGCACGTGGATCCTGAGAACTTCAGGCTCCTGGGCAACGTGCTGGTCTGTGTGCTGGCCCATCACTTTGGCAAAGAATTCACCCCACCAGTGCAGGCTGCCTATCAGAAAGTGGTGGCTGGTGTGGCTAATGCCCTGGCCCACAAGTATCACTAA"},{"id":"hemoglobin-beta-sickle","name":"Hemoglobin beta chain, sickle-cell (HGB-S)","structure":"Mutated oxygen-carrying subunit of hemoglobin (HbS) that causes sickle-cell disease","gene":"HBB","organism":"Homo sapiens","accession":"NM_000518.5","kind":"protein-coding CDS (sickle-cell allele)","length_bp":444,"protein_length_aa":147,"start_codon":"ATG","stop_codon":"TAA","note":"Same as the normal hemoglobin beta chain except for one base: base 20 is T instead of A. The 7th codon becomes GTG (valine) instead of GAG (glutamic acid). Textbooks call this Glu6Val because they do not count the start codon.","sequence":"ATGGTGCATCTGACTCCTGTGGAGAAGTCTGCCGTTACTGCCCTGTGGGGCAAGGTGAACGTGGATGAAGTTGGTGGTGAGGCCCTGGGCAGGCTGCTGGTGGTCTACCCTTGGACCCAGAGGTTCTTTGAGTCCTTTGGGGATCTGTCCACTCCTGATGCTGTTATGGGCAACCCTAAGGTGAAGGCTCATGGCAAGAAAGTGCTCGGTGCCTTTAGTGATGGCCTGGCTCACCTGGACAACCTCAAGGGCACCTTTGCCACACTGAGTGAGCTGCACTGTGACAAGCTGCACGTGGATCCTGAGAACTTCAGGCTCCTGGGCAACGTGCTGGTCTGTGTGCTGGCCCATCACTTTGGCAAAGAATTCACCCCACCAGTGCAGGCTGCCTATCAGAAAGTGGTGGCTGGTGTGGCTAATGCCCTGGCCCACAAGTATCACTAA"},{"id":"insulin","name":"Insulin (preproinsulin)","structure":"Peptide hormone that signals cells to take up glucose","gene":"INS","organism":"Homo sapiens","accession":"NM_000207.3","kind":"protein-coding CDS","length_bp":333,"protein_length_aa":110,"start_codon":"ATG","stop_codon":"TAG","sequence":"ATGGCCCTGTGGATGCGCCTCCTGCCCCTGCTGGCGCTGCTGGCCCTCTGGGGACCTGACCCAGCCGCAGCCTTTGTGAACCAACACCTGTGCGGCTCACACCTGGTGGAAGCTCTCTACCTAGTGTGCGGGGAACGAGGCTTCTTCTACACACCCAAGACCCGCCGGGAGGCAGAGGACCTGCAGGTGGGGCAGGTGGAGCTGGGCGGGGGCCCTGGTGCAGGCAGCCTGCAGCCCTTGGCCCTGGAGGGGTCCCTGCAGAAGCGTGGCATTGTGGAACAATGCTGTACCAGCATCTGCTCCCTCTACCAGCTGGAGAACTACTGCAACTAG"},{"id":"gfp","name":"Green fluorescent protein","structure":"Barrel-shaped fluorescent protein used as a cell biology tag","gene":"GFP","organism":"Aequorea victoria","accession":"M62653.1","kind":"protein-coding CDS","length_bp":717,"protein_length_aa":238,"start_codon":"ATG","stop_codon":"TAA","sequence":"ATGAGTAAAGGAGAAGAACTTTTCACTGGAGTTGTCCCAATTCTTGTTGAATTAGATGGTGATGTTAATGGGCACAAATTTTCTGTCAGTGGAGAGGGTGAAGGTGATGCAACATACGGAAAACTTACCCTTAAATTTATTTGCACTACTGGAAAACTACCTGTTCCATGGCCAACACTTGTCACTACTTTCTCTTATGGTGTTCAATGCTTTTCAAGATACCCAGATCATATGAAACAGCATGACTTTTTCAAGAGTGCCATGCCCGAAGGTTATGTACAGGAAAGAACTATATTTTTCAAAGATGACGGGAACTACAAGACACGTGCTGAAGTCAAGTTTGAAGGTGATACCCTTGTTAATAGAATCGAGTTAAAAGGTATTGATTTTAAAGAAGATGGAAACATTCTTGGACACAAATTGGAATACAACTATAACTCACACAATGTATACATCATGGCAGACAAACAAAAGAATGGAATCAAAGTTAACTTCAAAATTAGACACAACATTGAAGATGGAAGCGTTCAACTAGCAGACCATTATCAACAAAATACTCCAATTGGCGATGGCCCTGTCCTTTTACCAGACAACCATTACCTGTCCACACAATCTGCCCTTTCGAAAGATCCCAACGAAAAGAGAGACCACATGGTCCTTCTTGAGTTTGTAACAGCTGCTGGGATTACACATGGCATGGATGAACTATACAAATAA"}]}</script>
 
 <input id="capture" type="text" autocomplete="off" autocapitalize="characters"
        autocorrect="off" spellcheck="false" aria-label="DNA sequence input">
@@ -675,7 +683,7 @@ const mk = (tag, cls, text) => {
 const entryStage = $('entry-stage'), resultsStage = $('results-stage');
 const typedEl = $('typed'), pEnter = $('p-enter'), pDone = $('p-done'), capture = $('capture');
 const decodingEl = $('decoding'), footer = $('footer'), messagesEl = $('messages');
-const resetBtn = $('reset'), tip = $('tip');
+const resetBtn = $('reset'), swapBtn = $('swap'), tip = $('tip');
 const quads = [
   { box: $('dna-box'),  el: $('dna')   },
   { box: $('tmpl-box'), el: $('tmpl')  },
@@ -1068,12 +1076,25 @@ function playDecoding(token) {
   });
 }
 
+// Normal and sickle-cell hemoglobin are a pair: while either one is on screen a button flips to the other.
+const HB_PAIR = ['hemoglobin-beta', 'hemoglobin-beta-sickle'];
+function hbOther() {
+  const i = structure ? HB_PAIR.indexOf(structure.id) : -1;
+  return i < 0 ? null : (STRUCTURES.find(s => s.id === HB_PAIR[1 - i]) || null);
+}
+function updateSwap() {
+  const other = hbOther();
+  swapBtn.hidden = !other;
+  if (other) swapBtn.textContent = other.id === 'hemoglobin-beta' ? 'Show normal hemoglobin' : 'Show sickle-cell (HGB-S)';
+}
+
 function showFooter(messages) {
   messagesEl.replaceChildren(...messages.map(m => mk('div', 'msg ' + m.kind, m.text)));
+  updateSwap();
   footer.hidden = false;
 }
 
-async function run(input) {
+async function run(input, opts = {}) {
   const token = ++runId;
   const r = decode(input);
   cmp = structure ? analyze(structure.sequence, input, structure.kind) : null;
@@ -1090,14 +1111,25 @@ async function run(input) {
 
   entryStage.hidden = true;
   resultsStage.hidden = false;
+  resultsStage.classList.toggle('instant', !!opts.flip);   // a flip skips the pop-in animations
   buildResults(r);
   fitAll();
-  if (structure) openInfo(structure, cmp);
+  if (structure && !opts.flip) openInfo(structure, cmp);
 
   if (!r.canBegin) {
     showFooter(messages);
     mode = 'done';
     if (!infoOpen) resetBtn.focus();
+    return;
+  }
+
+  if (opts.flip) {
+    // normal <-> sickle flip: everything at once, no decoding cascade, then flash what differs
+    r.codons.forEach((_, k) => revealCodon(k));
+    showFooter(messages);
+    mode = 'done';
+    flashDifference(opts.flip.prev);
+    swapBtn.focus();
     return;
   }
 
@@ -1182,6 +1214,68 @@ chain.addEventListener('mouseout', e => {
 });
 chain.addEventListener('focusin', e => { const c = chipOf(e); if (c) activate(c); });
 chain.addEventListener('focusout', clearHighlight);
+
+// ---------- normal <-> sickle-cell hemoglobin ----------
+// Flash every codon that differs from what was on screen before (all four strands), and
+// the amino acid chip too when the amino acid itself changed.
+function flashDifference(prevSeq) {
+  if (!res || !res.canBegin) return;
+  const prev = decode(prevSeq);
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const bases = [], aas = [];
+  let scrolled = false;
+  res.codons.forEach((c, k) => {
+    const old = prev.codons[k];
+    if (!old || old.pos !== c.pos || old.dna === c.dna) return;
+    for (let m = 0; m < 3; m++) {
+      bases.push(dnaSpans[c.pos + m], tmplSpans[c.pos + m], rnaSpans[k * 3 + m], trnaSpans[k * 3 + m]);
+    }
+    if (old.abbr !== c.abbr) aas.push(chips[k]);
+    if (!scrolled) {                     // bring the first change into view in any panel that scrolls
+      scrolled = true;
+      for (const [arr, box, off] of [[dnaSpans, dnaQ.box, c.pos], [tmplSpans, tmplQ.box, c.pos],
+                                     [rnaSpans, rnaQ.box, k * 3], [trnaSpans, trnaQ.box, k * 3],
+                                     [chips, aaQ.box, k]]) {
+        if (box.scrollHeight > box.clientHeight + 1) arr[off].scrollIntoView({ block: 'nearest' });
+      }
+    }
+  });
+
+  if (reduce) {                          // no blinking: hold a plain highlight for a moment
+    const all = bases.concat(aas);
+    all.forEach(el => el.classList.add('diff-flash'));
+    setTimeout(() => all.forEach(el => el.classList.remove('diff-flash')), 1500);
+    return;
+  }
+  for (const el of bases) {
+    const cs = getComputedStyle(el);
+    const from = { backgroundColor: cs.backgroundColor, color: cs.color };
+    const on = { backgroundColor: '#fff', color: '#000' };
+    el.animate([from, on, from, on, from, on, from], { duration: 1400 });
+  }
+  for (const el of aas) {
+    const cs = getComputedStyle(el);
+    const from = { transform: cs.transform, boxShadow: cs.boxShadow };
+    const on = { transform: 'scale(1.4)', boxShadow: '0 0 0 0.18em #fff, 0 0 1em 0.25em #fff' };
+    el.style.zIndex = 2;
+    el.animate([from, on, from, on, from, on, from], { duration: 1400 })
+      .onfinish = () => { el.style.zIndex = ''; };
+  }
+}
+
+swapBtn.addEventListener('click', () => {
+  const other = hbOther();
+  if (mode !== 'done' || !other) return;
+  const prev = seq;
+  runId++;
+  stopAuto();
+  clearHighlight();
+  structure = other;
+  seq = other.sequence;
+  origin = new Array(seq.length).fill(0);
+  mode = 'busy';
+  run(seq, { flip: { prev } });   // instant, no info card, flash the difference
+});
 
 // ---------- reset ----------
 resetBtn.addEventListener('click', () => {
